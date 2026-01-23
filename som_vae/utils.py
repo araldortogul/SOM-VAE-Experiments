@@ -35,6 +35,38 @@ def interpolate_arrays(arr1, arr2, num_steps=100, interpolation_length=0.3):
     final_array = np.concatenate((start_arrays, interpolation, end_arrays))
     return final_array
 
+def interpolate_3_arrays(arr1, arr2, arr3, num_steps=5, interpolation_steps=1):
+    """Interpolates linearly between two arrays over a given number of steps.
+    The actual interpolation happens only across a fraction of those steps.
+
+    Args:
+        arr1 (np.array): The starting array for the interpolation.
+        arr2 (np.array): The end array for the interpolation.
+        num_steps (int): The length of the interpolation array along the newly created axis (default: 100).
+        interpolation_steps (int): The number of frames across which the actual interpolation happens (default: 1).
+
+    Returns:
+        np.array: The final interpolated array of shape ([num_steps] + arr1.shape).
+    """
+    assert arr1.shape == arr2.shape, "The two arrays have to be of the same shape"
+    start_steps = int((num_steps - 2 * interpolation_steps) / 3)
+    inter_steps = int(interpolation_steps)
+    mid_steps = int((num_steps - 2 * interpolation_steps) / 3)
+    end_steps = num_steps - start_steps - inter_steps - mid_steps
+    interpolation1 = np.zeros([inter_steps]+list(arr1.shape))
+    interpolation2 = np.zeros([inter_steps]+list(arr1.shape))
+    arr_diff1 = arr2 - arr1
+    arr_diff2 = arr3 - arr2
+    for i in range(inter_steps):
+        interpolation1[i] = arr1 + (float(i+1)/float(inter_steps+1))*arr_diff1
+        interpolation2[i] = arr2 + (float(i+1)/float(inter_steps+1))*arr_diff2
+    start_arrays = np.concatenate([np.expand_dims(arr1, 0)] * start_steps)
+    mid_arrays = np.concatenate([np.expand_dims(arr2, 0)] * mid_steps)
+    end_arrays = np.concatenate([np.expand_dims(arr3, 0)] * end_steps)
+
+    final_array = np.concatenate((start_arrays, interpolation1, mid_arrays, interpolation2, end_arrays))
+    return final_array
+
 
 def compute_NMI(cluster_assignments, class_assignments):
     """Computes the Normalized Mutual Information between cluster and class assignments.
