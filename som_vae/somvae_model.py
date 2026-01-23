@@ -8,19 +8,19 @@ License: MIT License
 
 import functools
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 
 def weight_variable(shape, name):
-    """Creates a TensorFlow Variable with a given shape and name and truncated normal initialization."""
-    initial = tf.truncated_normal(shape, stddev=0.1)
-    return tf.Variable(initial,name=name)
-
+    """Creates a TensorFlow Variable using get_variable to support reuse."""
+    return tf.get_variable(name, shape=shape, 
+                          initializer=tf.truncated_normal_initializer(stddev=0.1))
 
 def bias_variable(shape, name):
-    """Creates a TensorFlow Variable with a given shape and name and constant initialization."""
-    initial = tf.constant(0.1, shape=shape)
-    return tf.Variable(initial, name=name)
+    """Creates a TensorFlow Variable using get_variable to support reuse."""
+    return tf.get_variable(name, shape=shape, 
+                          initializer=tf.constant_initializer(0.1))
 
 
 def conv2d(x, shape, name, strides=[1,1,1,1]):
@@ -110,7 +110,7 @@ class SOMVAE:
     """Class for the SOM-VAE model as described in https://arxiv.org/abs/1806.02199"""
 
     def __init__(self, inputs, latent_dim=64, som_dim=[8,8], learning_rate=1e-4, decay_factor=0.95, decay_steps=1000,
-            input_length=28, input_channels=28, alpha=1., beta=1., gamma=1., tau=1., mnist=True):
+            input_length=28, input_channels=28, alpha=1., beta=1., gamma=1., tau=1., mnist=True, topology="rectangular", markov_order=1):
         """Initialization method for the SOM-VAE model object.
         
         Args:
@@ -128,6 +128,7 @@ class SOMVAE:
             gamma (float): The weight for the transition probability loss (default: 1.).
             tau (float): The weight for the smoothness loss (default: 1.).
             mnist (bool): Flag that tells the model if we are training in MNIST-like data (default: True).
+            topology (string): Determines the neighborhood structure of the SOM grid (default: rectangular)
         """
         self.inputs = inputs
         self.latent_dim = latent_dim
@@ -137,6 +138,7 @@ class SOMVAE:
         self.decay_steps = decay_steps
         self.input_length = input_length
         self.input_channels = input_channels
+        self.topology = topology
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
@@ -252,7 +254,59 @@ class SOMVAE:
 
 
     @lazy_scope
-    def z_q_neighbors(self):
+    def z_q_triangular_neighbors(self):
+        """Aggregates 6 neighbors for a triangular grid (Odd-R offset)."""
+        k_1 = self.k // self.som_dim[1]  # Row
+        k_2 = self.k % self.som_dim[1]   # Col
+        
+        # Parity check: Is the row even?
+        is_even = tf.equal(k_1 % 2, 0)
+
+        # 1. Horizontal Neighbors (Simple)
+        left_col = tf.maximum(k_2 - 1, 0)
+        right_col = tf.minimum(k_2 + 1, self.som_dim[1] - 1)
+
+        # 2. Vertical Neighbors (Depend on parity)
+        # If even row, left-diag is col-1. If odd row, left-diag is same col.
+        row_up = tf.maximum(k_1 - 1, 0)
+        row_down = tf.minimum(k_1 + 1, self.som_dim[0] - 1)
+
+        up_left_col = tf.where(is_even, tf.maximum(k_2 - 1, 0), k_2)
+        up_right_col = tf.where(is_even, k_2, tf.minimum(k_2 + 1, self.som_dim[1] - 1))
+        
+        down_left_col = tf.where(is_even, tf.maximum(k_2 - 1, 0), k_2)
+        down_right_col = tf.where(is_even, k_2, tf.minimum(k_2 + 1, self.som_dim[1] - 1))
+
+        # Helper to fetch and mask (return zero vector if at boundary)
+        def get_neighbor(r, c, condition):
+            # condition is True if the neighbor exists (not out of bounds)
+            neighbor_vec = tf.gather_nd(self.embeddings, tf.stack([r, c], axis=1))
+            return tf.where(condition, neighbor_vec, tf.zeros([self.batch_size, self.latent_dim]))
+
+        # Boundary conditions
+        not_top = tf.greater(k_1, 0)
+        not_bottom = tf.less(k_1, self.som_dim[0] - 1)
+        not_left = tf.greater(k_2, 0)
+        not_right = tf.less(k_2, self.som_dim[1] - 1)
+
+        # Note: up_left is only valid if not_top AND (is_odd OR not_left)
+        # For simplicity in SOM-VAE, we usually just use the clamped index 
+        # and tf.where with the boundary booleans:
+        
+        z_left = get_neighbor(k_1, left_col, not_left)
+        z_right = get_neighbor(k_1, right_col, not_right)
+        
+        z_up_l = get_neighbor(row_up, up_left_col, not_top)
+        z_up_r = get_neighbor(row_up, up_right_col, not_top)
+        
+        z_down_l = get_neighbor(row_down, down_left_col, not_bottom)
+        z_down_r = get_neighbor(row_down, down_right_col, not_bottom)
+
+        # Stack the winner + 6 neighbors
+        return tf.stack([self.z_q, z_left, z_right, z_up_l, z_up_r, z_down_l, z_down_r], axis=1)
+
+    @lazy_scope
+    def z_q_rectangular_neighbors(self):
         """Aggregates the respective neighbors in the SOM for every embedding in z_q."""
         k_1 = self.k // self.som_dim[1]
         k_2 = self.k % self.som_dim[1]
@@ -280,26 +334,29 @@ class SOMVAE:
         z_q_neighbors = tf.stack([self.z_q, z_q_up, z_q_down, z_q_right, z_q_left], axis=1)
         return z_q_neighbors
 
-
-    @lazy_scope
-    def reconstruction_q(self):
-        """Reconstructs the input from the embeddings."""
-        if not self.mnist:
-            with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):
-                h_3 = tf.keras.layers.Dense(128, activation="relu")(self.z_q)
-                h_4 = tf.keras.layers.Dense(256, activation="relu")(h_3)
-                x_hat = tf.keras.layers.Dense(self.input_channels, activation="sigmoid")(h_4)
+    @property
+    def z_q_neighbors(self):
+        """Routes to the correct neighbor function based on topology setting."""
+        if self.topology == "triangular":
+            return self.z_q_triangular_neighbors
         else:
-            with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):
+            return self.z_q_rectangular_neighbors
+    
+    def _decode(self, z):
+        """Single source of truth for the decoder architecture."""
+        with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):
+            if not self.mnist:
+                h_3 = tf.keras.layers.Dense(128, activation="relu")(z)
+                h_4 = tf.keras.layers.Dense(256, activation="relu")(h_3)
+                return tf.keras.layers.Dense(self.input_channels, activation="sigmoid")(h_4)
+            else:
                 flat_size = 7*7*256
-                h_flat_dec = tf.keras.layers.Dense(flat_size)(self.z_q)
+                h_flat_dec = tf.keras.layers.Dense(flat_size)(z)
                 h_reshaped = tf.reshape(h_flat_dec, [-1, 7, 7, 256])
                 h_unpool1 = tf.keras.layers.UpSampling2D((2,2))(h_reshaped)
                 h_deconv1 = tf.nn.relu(conv2d(h_unpool1, [4,4,256,256], "deconv1"))
                 h_unpool2 = tf.keras.layers.UpSampling2D((2,2))(h_deconv1)
-                h_deconv2 = tf.nn.sigmoid(conv2d(h_unpool2, [4,4,256,1], "deconv2"))
-                x_hat = h_deconv2
-        return x_hat
+                return tf.nn.sigmoid(conv2d(h_unpool2, [4,4,256,1], "deconv2"))
 
 
     @lazy_scope

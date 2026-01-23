@@ -81,8 +81,7 @@ def ex_config():
     tau = 1.4
     decay_factor = 0.9
     name = ex.get_experiment_info()["name"]
-    ex_name = "{}_{}_{}-{}_{}_{}".format(name, latent_dim, som_dim[0], som_dim[1], str(date.today()), uuid.uuid4().hex[:5])
-    logdir = "../logs/{}".format(ex_name)
+    topology = "rectangular"  # Options: "rectangular" or "triangular"
     modelpath = "../models/{}/{}.ckpt".format(ex_name, ex_name)
     interactive = True
     data_set = "MNIST_data"
@@ -282,7 +281,7 @@ def evaluate_model(model, x, modelpath, batch_size):
  
 
 @ex.automain
-def main(latent_dim, som_dim, learning_rate, decay_factor, alpha, beta, gamma, tau, modelpath, save_model, mnist):
+def main(latent_dim, som_dim, learning_rate, decay_factor, alpha, beta, gamma, tau, modelpath, save_model, mnist, topology):
     """Main method to build a model, train it and evaluate it.
     
     Args:
@@ -296,6 +295,7 @@ def main(latent_dim, som_dim, learning_rate, decay_factor, alpha, beta, gamma, t
         tau (float): Weight for the smoothness loss.
         modelpath (path): Path for the model checkpoints.
         save_model (bool): Indicates if the model should be saved after training and evaluation.
+        topology (string): Determines the topology of the SOM grid.
         
     Returns:
         dict: Results of the evaluation (NMI, Purity, MSE).
@@ -311,7 +311,7 @@ def main(latent_dim, som_dim, learning_rate, decay_factor, alpha, beta, gamma, t
 
     model = SOMVAE(inputs=x, latent_dim=latent_dim, som_dim=som_dim, learning_rate=lr_val, decay_factor=decay_factor,
             input_length=input_length, input_channels=input_channels, alpha=alpha, beta=beta, gamma=gamma,
-            tau=tau, mnist=mnist)
+            tau=tau, mnist=mnist, topology=topology)
 
     train_model(model, x, lr_val, generator=data_generator)
 
