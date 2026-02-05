@@ -83,9 +83,11 @@ def ex_config():
     name = ex.get_experiment_info()["name"]
     topology = "rectangular"  # Options: "rectangular" or "triangular"
     markov_order=1
+    data_set = "MNIST_data"
+    ex_name = "{}_{}-{}_{}_{}".format(name, som_dim[0], som_dim[1], str(date.today()), uuid.uuid4().hex[:5])
+    logdir = "../logs/{}/{}/markov-{}/{}".format(data_set, topology, markov_order, ex_name)
     modelpath = "../models/{}/{}.ckpt".format(ex_name, ex_name)
     interactive = True
-    data_set = "MNIST_data"
     save_model = False
     time_series = True
     mnist = True
