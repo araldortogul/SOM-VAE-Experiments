@@ -1,0 +1,46 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  Extended SOM-VAE: Higher-Order Dynamics & Triangular
+  Topologies
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Aral
+    family-names: Dörtoğul
+    affiliation: Ludwig-Maximilians-Universität München
+identifiers:
+  - type: url
+    value: 'https://arxiv.org/abs/1806.02199'
+    description: >-
+      SOM-VAE: Interpretable Discrete Representation
+      Learning on Time Series
+repository-code: 'https://github.com/araldortogul/SOM-VAE-Experiments'
+repository: 'https://github.com/ratschlab/SOM-VAE'
+abstract: >-
+  This repository is an extended implementation of the
+  SOM-VAE (Fortuin et al., 2019). This framework combines
+  Variational Autoencoders (VAEs) with Self-Organizing Maps
+  (SOMs) to learn interpretable, discrete, and topologically
+  ordered representations of time-series data. This specific
+  version introduces research extensions for higher-order
+  temporal dependencies and non-standard grid structures,
+  providing deeper insights into latent manifold
+  organization.
+keywords:
+  - som
+  - vae
+  - som-vae
+  - variational-autoencoder
+  - self-organizing-map
+  - deep-learning
+  - time-series
+  - clustering
+  - markov-model
+commit: df243d4520246cdb0dd88dc52e2ba577e2fc4612
+version: v0.0.1
+date-released: '2026-02-05'
