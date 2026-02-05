@@ -82,6 +82,7 @@ def ex_config():
     decay_factor = 0.9
     name = ex.get_experiment_info()["name"]
     topology = "rectangular"  # Options: "rectangular" or "triangular"
+    markov_order=1
     modelpath = "../models/{}/{}.ckpt".format(ex_name, ex_name)
     interactive = True
     data_set = "MNIST_data"
@@ -281,7 +282,7 @@ def evaluate_model(model, x, modelpath, batch_size):
  
 
 @ex.automain
-def main(latent_dim, som_dim, learning_rate, decay_factor, alpha, beta, gamma, tau, modelpath, save_model, mnist, topology):
+def main(latent_dim, som_dim, learning_rate, decay_factor, alpha, beta, gamma, tau, modelpath, save_model, mnist, topology, markov_order):
     """Main method to build a model, train it and evaluate it.
     
     Args:
@@ -311,7 +312,7 @@ def main(latent_dim, som_dim, learning_rate, decay_factor, alpha, beta, gamma, t
 
     model = SOMVAE(inputs=x, latent_dim=latent_dim, som_dim=som_dim, learning_rate=lr_val, decay_factor=decay_factor,
             input_length=input_length, input_channels=input_channels, alpha=alpha, beta=beta, gamma=gamma,
-            tau=tau, mnist=mnist, topology=topology)
+            tau=tau, mnist=mnist, topology=topology, markov_order=markov_order)
 
     train_model(model, x, lr_val, generator=data_generator)
 

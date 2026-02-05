@@ -129,6 +129,7 @@ class SOMVAE:
             tau (float): The weight for the smoothness loss (default: 1.).
             mnist (bool): Flag that tells the model if we are training in MNIST-like data (default: True).
             topology (string): Determines the neighborhood structure of the SOM grid (default: rectangular)
+            markov_order (int): Determines the order of the Markov model (1 for 1st order and 2 for 2nd order)
         """
         self.inputs = inputs
         self.latent_dim = latent_dim
@@ -139,6 +140,7 @@ class SOMVAE:
         self.input_length = input_length
         self.input_channels = input_channels
         self.topology = topology
+        self.markov_order = markov_order
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
@@ -178,11 +180,17 @@ class SOMVAE:
     def transition_probabilities(self):
         """Creates tensor for the transition probabilities."""
         with tf.variable_scope("probabilities"):
-            probabilities_raw = tf.Variable(tf.zeros(self.som_dim+self.som_dim), name="probabilities_raw")
+            # Define shape: [k_t-1, k_t] or [k_t-2, k_t-1, k_t]
+            if self.markov_order == 1:
+                shape = self.som_dim + self.som_dim
+            else:
+                shape = self.som_dim + self.som_dim + self.som_dim
+            
+            probabilities_raw = tf.get_variable("probabilities_raw", shape=shape, initializer=tf.zeros_initializer())
             probabilities_positive = tf.exp(probabilities_raw)
-            probabilities_summed = tf.reduce_sum(probabilities_positive, axis=[-1,-2], keepdims=True)
-            probabilities_normalized = probabilities_positive / probabilities_summed
-            return probabilities_normalized
+            # Normalize over the target node (the last 2 dims)
+            probabilities_summed = tf.reduce_sum(probabilities_positive, axis=[-1, -2], keepdims=True)
+            return probabilities_positive / probabilities_summed # normalized probabilities
 
 
     @lazy_scope
@@ -413,7 +421,14 @@ class SOMVAE:
         k_2 = self.k % self.som_dim[1]
         k_1_old = tf.concat([k_1[0:1], k_1[:-1]], axis=0)
         k_2_old = tf.concat([k_2[0:1], k_2[:-1]], axis=0)
-        k_stacked = tf.stack([k_1_old, k_2_old, k_1, k_2], axis=1)
+
+        if self.markov_order == 1:
+            k_stacked = tf.stack([k_1_old, k_2_old, k_1, k_2], axis=1)
+        else:
+            k_1_very_old = tf.concat([k_1_old[0:1], k_1_old[:-1]], axis=0)
+            k_2_very_old = tf.concat([k_2_old[0:1], k_2_old[:-1]], axis=0)
+            k_stacked = tf.stack([k_1_very_old, k_2_very_old, k_1_old, k_2_old, k_1, k_2], axis=1)
+
         transitions_all = tf.gather_nd(self.transition_probabilities, k_stacked)
         loss_probabilities = -self.gamma * tf.reduce_mean(tf.log(transitions_all))
         return loss_probabilities
@@ -426,8 +441,15 @@ class SOMVAE:
         k_2 = self.k % self.som_dim[1]
         k_1_old = tf.concat([k_1[0:1], k_1[:-1]], axis=0)
         k_2_old = tf.concat([k_2[0:1], k_2[:-1]], axis=0)
-        k_stacked_old = tf.stack([k_1_old, k_2_old], axis=1)
-        out_probabilities_old = tf.gather_nd(self.transition_probabilities, k_stacked_old)
+
+        if self.markov_order == 1:
+            k_stacked_prev = tf.stack([k_1_old, k_2_old], axis=1)
+        else:
+            k_1_very_old = tf.concat([k_1_old[0:1], k_1_old[:-1]], axis=0)
+            k_2_very_old = tf.concat([k_2_old[0:1], k_2_old[:-1]], axis=0)
+            k_stacked_prev = tf.stack([k_1_very_old, k_2_very_old, k_1_old, k_2_old], axis=1)
+
+        out_probabilities_old = tf.gather_nd(self.transition_probabilities, k_stacked_prev)
         out_probabilities_flat = tf.reshape(out_probabilities_old, [self.batch_size, -1])
         weighted_z_dist_prob = tf.multiply(self.z_dist_flat, out_probabilities_flat)
         loss_z_prob = tf.reduce_mean(weighted_z_dist_prob)
