@@ -71,7 +71,7 @@ def ex_config():
     """
     num_epochs = 20
     patience = 100
-    batch_size = 32
+    batch_size = 5
     latent_dim = 64
     som_dim = [8,8]
     learning_rate = 0.0005
@@ -95,7 +95,7 @@ def ex_config():
 # def search_space():
 #     num_epochs = 20
 #     patience = 20
-#     batch_size = 32
+#     batch_size = 5
 #     latent_dim = hyper.UniformInt(lower=64, upper=256, log_scale=True)
 #     som_dim = [8,8]
 #     learning_rate = hyper.UniformFloat(lower=0.0001, upper=0.01, log_scale=True)
@@ -157,9 +157,12 @@ def get_data_generator(time_series):
 
             if time_series:
                 for i, image in enumerate(images):
+                    # Choose direction: 1 for up, -1 for down
+                    direction = np.random.choice([1, -1])
                     start_image = image
-                    end_image = images[np.random.choice(np.where(labels == (labels[i] + 1) % 10)[0])]
-                    interpolation = interpolate_arrays(start_image, end_image, batch_size)
+                    mid_image = images[np.random.choice(np.where(labels == (labels[i] + direction) % 10)[0])]
+                    end_image = images[np.random.choice(np.where(labels == (labels[i] + direction * 2) % 10)[0])]
+                    interpolation = interpolate_3_arrays(start_image, mid_image, end_image)
                     yield interpolation + np.random.normal(scale=0.01, size=interpolation.shape)
             else:
                 for i in range(len(images)//batch_size):
