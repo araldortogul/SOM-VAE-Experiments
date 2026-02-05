@@ -16,8 +16,8 @@ from glob import glob
 from datetime import date
 
 import numpy as np
-import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 import pandas as pd
 from sklearn.metrics import mean_squared_error
 from tqdm import tqdm, trange
@@ -106,14 +106,18 @@ def ex_config():
 #     decay_factor = hyper.UniformFloat(lower=0.8, upper=1.)
 #     interactive = False
 
-mnist = input_data.read_data_sets(f"../data/{ex_config()['data_set']}")
+# Load MNIST using Keras
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
 
-data_train = np.reshape(mnist.train.images, [-1,28,28,1])
-labels_train = mnist.train.labels
+# Normalize and reshape to match the model's expected [Batch, 28, 28, 1]
+data_train = x_train.astype('float32') / 255.0
+data_train = np.expand_dims(data_train, -1)
+labels_train = y_train
+
 data_val = data_train[45000:]
 labels_val = labels_train[45000:]
 data_train = data_train[:45000]
-labels_train = data_train[:45000]
+labels_train = labels_train[:45000]
 
 
 @ex.capture
