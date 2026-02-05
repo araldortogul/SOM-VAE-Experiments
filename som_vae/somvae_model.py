@@ -365,27 +365,17 @@ class SOMVAE:
                 h_deconv1 = tf.nn.relu(conv2d(h_unpool1, [4,4,256,256], "deconv1"))
                 h_unpool2 = tf.keras.layers.UpSampling2D((2,2))(h_deconv1)
                 return tf.nn.sigmoid(conv2d(h_unpool2, [4,4,256,1], "deconv2"))
+        
+    @lazy_scope
+    def reconstruction_q(self):
+        """Reconstructs the input from the embeddings."""
+        return self._decode(self.z_q)
 
 
     @lazy_scope
     def reconstruction_e(self):
         """Reconstructs the input from the encodings."""
-        if not self.mnist:
-            with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):
-                h_3 = tf.keras.layers.Dense(128, activation="relu")(self.z_e)
-                h_4 = tf.keras.layers.Dense(256, activation="relu")(h_3)
-                x_hat = tf.keras.layers.Dense(self.input_channels, activation="sigmoid")(h_4)
-        else:
-            with tf.variable_scope("decoder", reuse=tf.AUTO_REUSE):
-                flat_size = 7*7*256
-                h_flat_dec = tf.keras.layers.Dense(flat_size)(self.z_e)
-                h_reshaped = tf.reshape(h_flat_dec, [-1, 7, 7, 256])
-                h_unpool1 = tf.keras.layers.UpSampling2D((2,2))(h_reshaped)
-                h_deconv1 = tf.nn.relu(conv2d(h_unpool1, [4,4,256,256], "deconv1"))
-                h_unpool2 = tf.keras.layers.UpSampling2D((2,2))(h_deconv1)
-                h_deconv2 = tf.nn.sigmoid(conv2d(h_unpool2, [4,4,256,1], "deconv2"))
-                x_hat = h_deconv2
-        return x_hat
+        return self._decode(self.z_e)
 
 
     @lazy_scope
