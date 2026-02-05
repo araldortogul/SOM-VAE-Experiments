@@ -215,6 +215,29 @@ def train_model(model, x, lr_val, num_epochs, patience, batch_size, logdir,
                 test_loss, summary = sess.run([model.loss, summaries], feed_dict={x: batch_val})
                 test_losses.append(test_loss)
                 test_writer.add_summary(summary, tf.train.global_step(sess, model.global_step))
+
+                val_k_list = []
+                # Process validation data in batches to avoid OOM
+                for i in range(0, len(data_val), batch_size):
+                    batch_data_val = data_val[i:i+batch_size]
+                    # We only need the cluster assignments 'k' here
+                    k_batch = sess.run(model.k, feed_dict={x: batch_data_val})
+                    val_k_list.extend(k_batch)
+                
+                # Convert list back to a numpy array for the compute functions
+                val_k = np.array(val_k_list)
+                
+                # Calculate the metrics
+                current_nmi = compute_NMI(val_k, labels_val[:len(val_k)])
+                current_purity = compute_purity(val_k, labels_val[:len(val_k)])
+                
+                # 3. Create a manual summary to send to TensorBoard
+                metric_summary = tf.Summary(value=[
+                    tf.Summary.Value(tag="Evaluation/NMI", simple_value=float(current_nmi)),
+                    tf.Summary.Value(tag="Evaluation/Purity", simple_value=float(current_purity)),
+                ])
+                test_writer.add_summary(metric_summary, tf.train.global_step(sess, model.global_step))
+
                 if test_losses[-1] == min(test_losses):
                     saver.save(sess, modelpath, global_step=epoch)
                     patience_count = 0
@@ -230,7 +253,7 @@ def train_model(model, x, lr_val, num_epochs, patience, batch_size, logdir,
                     train_step_SOMVAE.run(feed_dict={x: batch_data, lr_val:learning_rate})
                     train_step_prob.run(feed_dict={x: batch_data, lr_val:learning_rate*100})
                     if interactive:
-                        pbar.set_postfix(epoch=epoch, train_loss=train_loss, test_loss=test_loss, refresh=False)
+                        pbar.set_postfix(epoch=epoch, train_loss=train_loss, test_loss=test_loss, NMI=current_nmi, Purity=current_purity, refresh=False)
                         pbar.update(1)
 
         except KeyboardInterrupt:
@@ -320,6 +343,14 @@ def main(latent_dim, som_dim, learning_rate, decay_factor, alpha, beta, gamma, t
     model = SOMVAE(inputs=x, latent_dim=latent_dim, som_dim=som_dim, learning_rate=lr_val, decay_factor=decay_factor,
             input_length=input_length, input_channels=input_channels, alpha=alpha, beta=beta, gamma=gamma,
             tau=tau, mnist=mnist, topology=topology, markov_order=markov_order)
+    
+    indices = [0, 1, 2, 3, 4]
+    tf.summary.image("Original_Images", tf.gather(x, indices), max_outputs=5)
+    tf.summary.image("VAE_Reconstructions", tf.gather(model.reconstruction_e, indices), max_outputs=5)
+    tf.summary.image("SOM_Quantized_Reconstructions", tf.gather(model.reconstruction_q, indices), max_outputs=5)
+    # Create a string summary for the topology
+    tf.summary.text("Experiment_Config", tf.constant(f"Topology: {topology}"))
+
 
     train_model(model, x, lr_val, generator=data_generator)
 
