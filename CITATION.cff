@@ -41,6 +41,7 @@ keywords:
   - time-series
   - clustering
   - markov-model
+license: MIT
 commit: df243d4520246cdb0dd88dc52e2ba577e2fc4612
 version: v0.0.1
 date-released: '2026-02-05'
